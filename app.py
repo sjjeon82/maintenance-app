@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 from datetime import datetime, timedelta
+import time  # 💡 구글 시트 동기화 대기를 위한 필수 모듈 추가
 from streamlit_gsheets import GSheetsConnection
 
 st.set_page_config(page_title="모바일 정비예약", layout="wide")
@@ -46,6 +47,8 @@ def create_reservation_modal(selected_date, start_time):
             st.warning("점검사항을 기입해주세요.")
         else:
             df = conn.read(worksheet="Sheet1", ttl=0)
+            df = df.dropna(subset=['id']) # 유령 데이터 삭제
+            
             new_id = int(df['id'].max() + 1) if not df.empty and pd.notna(df['id'].max()) else 1
             
             new_row = pd.DataFrame([{
@@ -57,8 +60,9 @@ def create_reservation_modal(selected_date, start_time):
             updated_df = pd.concat([df, new_row], ignore_index=True)
             conn.update(worksheet="Sheet1", data=updated_df)
             
-            # 💡 핵심 픽스: 구글 시트 업데이트 직후 강력한 캐시 소각
-            st.cache_data.clear() 
+            # 💡 핵심 픽스 1: 캐시 강제 소각 및 구글 시트 동기화 시간(1.5초) 벌어주기
+            st.cache_data.clear()
+            time.sleep(1.5) 
             st.rerun()
 
 # --- 🚀 예약 조회 / 수정 / 삭제 통합 모달창 ---
@@ -89,7 +93,9 @@ def reservation_modal(res_id, v_no, manager, t_type, s_time, details, selected_d
                 st.error("차량 번호와 운전자를 입력해주세요.")
             else:
                 df = conn.read(worksheet="Sheet1", ttl=0)
+                df = df.dropna(subset=['id'])
                 idx = df.index[df['id'] == res_id].tolist()
+                
                 if idx:
                     df.at[idx[0], 'start_time'] = new_s_time
                     df.at[idx[0], 'end_time'] = new_e_time
@@ -99,21 +105,25 @@ def reservation_modal(res_id, v_no, manager, t_type, s_time, details, selected_d
                     df.at[idx[0], 'details'] = new_details
                     conn.update(worksheet="Sheet1", data=df)
                 
-                # 💡 핵심 픽스: 저장 후 캐시 소각
+                # 💡 핵심 픽스 1: 수정 후에도 1.5초 대기
                 st.cache_data.clear()
+                time.sleep(1.5)
                 st.rerun()
                 
     with col_delete:
         if st.button("🗑️ 삭제", type="secondary", use_container_width=True):
             df = conn.read(worksheet="Sheet1", ttl=0)
+            df = df.dropna(subset=['id'])
+            
             updated_df = df[df['id'] != res_id]
             conn.update(worksheet="Sheet1", data=updated_df)
             
-            # 💡 핵심 픽스: 삭제 후 캐시 소각
+            # 💡 핵심 픽스 1: 삭제 후에도 1.5초 대기
             st.cache_data.clear()
+            time.sleep(1.5)
             st.rerun()
 
-# --- 📱 CSS 디자인부 ---
+# --- 📱 모바일 절대 방어 CSS ---
 st.markdown("""
 <style>
     .stApp { background-color: #f7f9fc; }
@@ -148,8 +158,15 @@ st.markdown(f'<div class="legend-box">{legend_html}</div>', unsafe_allow_html=Tr
 
 try:
     df_all = conn.read(worksheet="Sheet1", ttl=0)
+    df_all = df_all.dropna(subset=['id']) # 안전장치: 빈 줄(쓰레기 데이터) 무시
+    
     if not df_all.empty and 'date' in df_all.columns:
-        df_res = df_all[df_all['date'].astype(str) == str(target_date)]
+        # 💡 핵심 픽스 2: 구글 시트의 제멋대로 날짜/시간 포맷팅 버그 원천 차단
+        df_all['date'] = pd.to_datetime(df_all['date'], errors='coerce').dt.strftime('%Y-%m-%d')
+        df_all['start_time'] = pd.to_datetime(df_all['start_time'].astype(str), errors='coerce').dt.strftime('%H:%M')
+        df_all['end_time'] = pd.to_datetime(df_all['end_time'].astype(str), errors='coerce').dt.strftime('%H:%M')
+        
+        df_res = df_all[df_all['date'] == str(target_date)]
     else:
         df_res = pd.DataFrame()
 except Exception as e:
