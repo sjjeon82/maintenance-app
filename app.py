@@ -51,9 +51,10 @@ def create_reservation_modal(selected_date, start_time):
             
             new_id = int(df['id'].max() + 1) if not df.empty and pd.notna(df['id'].max()) else 1
             
+            # 💡 핵심 픽스: 구글 시트의 숫자 강제 변환을 막기 위해 앞에 싱글 쿼테이션(') 주입
             new_row = pd.DataFrame([{
                 "id": new_id, "date": str(selected_date), "start_time": start_time, 
-                "end_time": e_time, "vehicle_no": v_no, "manager": m_name, 
+                "end_time": e_time, "vehicle_no": f"'{v_no}", "manager": m_name, 
                 "task_type": task_type, "details": details
             }])
             
@@ -98,7 +99,8 @@ def reservation_modal(res_id, v_no, manager, t_type, s_time, details, selected_d
                 if idx:
                     df.at[idx[0], 'start_time'] = new_s_time
                     df.at[idx[0], 'end_time'] = new_e_time
-                    df.at[idx[0], 'vehicle_no'] = new_v_no
+                    # 💡 핵심 픽스: 수정 시에도 싱글 쿼테이션(') 주입
+                    df.at[idx[0], 'vehicle_no'] = f"'{new_v_no}"
                     df.at[idx[0], 'manager'] = new_manager
                     df.at[idx[0], 'task_type'] = new_task_type
                     df.at[idx[0], 'details'] = new_details
@@ -162,9 +164,9 @@ try:
         df_all['start_time'] = pd.to_datetime(df_all['start_time'].astype(str), errors='coerce').dt.strftime('%H:%M')
         df_all['end_time'] = pd.to_datetime(df_all['end_time'].astype(str), errors='coerce').dt.strftime('%H:%M')
         
-        # 💡 핵심 픽스: 차량 번호의 실수형 변환(.0) 방지 및 쓰레기값(nan) 제거 로직
+        # 💡 핵심 픽스: 소수점(.0) 제거 및 방어용으로 붙였던 싱글 쿼테이션(')을 다시 깔끔하게 제거
         if 'vehicle_no' in df_all.columns:
-            df_all['vehicle_no'] = df_all['vehicle_no'].astype(str).str.replace(r'\.0$', '', regex=True).replace('nan', '')
+            df_all['vehicle_no'] = df_all['vehicle_no'].astype(str).str.replace(r'\.0$', '', regex=True).str.replace(r"^\'", "", regex=True).replace('nan', '')
             
         df_res = df_all[df_all['date'] == str(target_date)]
     else:
