@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone # 💡 timezone 모듈 추가
 import time
 from streamlit_gsheets import GSheetsConnection
 
@@ -8,6 +8,9 @@ st.set_page_config(page_title="모바일 정비예약", layout="wide")
 
 # 1. 구글 시트 DB 연결
 conn = st.connection("gsheets", type=GSheetsConnection)
+
+# 💡 핵심 픽스: 서버 위치와 무관하게 무조건 한국 표준시(KST) 적용
+KST = timezone(timedelta(hours=9))
 
 def get_display_slots():
     morning = [f"{h:02d}:{m:02d}" for h in range(8, 12) for m in (0, 30)]
@@ -51,7 +54,6 @@ def create_reservation_modal(selected_date, start_time):
             
             new_id = int(df['id'].max() + 1) if not df.empty and pd.notna(df['id'].max()) else 1
             
-            # 💡 핵심 픽스: 구글 시트의 숫자 강제 변환을 막기 위해 앞에 싱글 쿼테이션(') 주입
             new_row = pd.DataFrame([{
                 "id": new_id, "date": str(selected_date), "start_time": start_time, 
                 "end_time": e_time, "vehicle_no": f"'{v_no}", "manager": m_name, 
@@ -99,7 +101,6 @@ def reservation_modal(res_id, v_no, manager, t_type, s_time, details, selected_d
                 if idx:
                     df.at[idx[0], 'start_time'] = new_s_time
                     df.at[idx[0], 'end_time'] = new_e_time
-                    # 💡 핵심 픽스: 수정 시에도 싱글 쿼테이션(') 주입
                     df.at[idx[0], 'vehicle_no'] = f"'{new_v_no}"
                     df.at[idx[0], 'manager'] = new_manager
                     df.at[idx[0], 'task_type'] = new_task_type
@@ -150,7 +151,9 @@ st.markdown("""
 
 st.markdown('<div class="main-title">🚜 정비고 입출고 관리</div>', unsafe_allow_html=True)
 
-target_date = st.date_input("조회 날짜", datetime.today(), label_visibility="collapsed")
+# 💡 핵심 픽스: 오늘 날짜를 가져올 때 한국 시간(KST)을 기준으로 가져오도록 변경
+today_kst = datetime.now(KST).date()
+target_date = st.date_input("조회 날짜", today_kst, label_visibility="collapsed")
 
 legend_html = "".join([f"<span style='white-space:nowrap;'>{v['icon']} {k}</span>" for k, v in TASK_CONFIG.items()])
 st.markdown(f'<div class="legend-box">{legend_html}</div>', unsafe_allow_html=True)
@@ -164,7 +167,6 @@ try:
         df_all['start_time'] = pd.to_datetime(df_all['start_time'].astype(str), errors='coerce').dt.strftime('%H:%M')
         df_all['end_time'] = pd.to_datetime(df_all['end_time'].astype(str), errors='coerce').dt.strftime('%H:%M')
         
-        # 💡 핵심 픽스: 소수점(.0) 제거 및 방어용으로 붙였던 싱글 쿼테이션(')을 다시 깔끔하게 제거
         if 'vehicle_no' in df_all.columns:
             df_all['vehicle_no'] = df_all['vehicle_no'].astype(str).str.replace(r'\.0$', '', regex=True).str.replace(r"^\'", "", regex=True).replace('nan', '')
             
