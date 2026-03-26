@@ -3,10 +3,9 @@ import pandas as pd
 from datetime import datetime, timedelta
 from streamlit_gsheets import GSheetsConnection
 
-st.set_page_config(page_title="모바일 정비예약 v1.0", layout="wide")
+st.set_page_config(page_title="모바일 정비예약", layout="wide")
 
-# 1. 구글 시트 DB 연결 (Streamlit Secrets에서 정보 가져옴)
-# ttl=0 옵션으로 누군가 폰에서 추가하면 다른 사람 폰에도 즉각 반영되게 함
+# 1. 구글 시트 DB 연결
 conn = st.connection("gsheets", type=GSheetsConnection)
 
 def get_display_slots():
@@ -24,7 +23,7 @@ TASK_CONFIG = {
 
 slots = get_display_slots()
 
-# --- 🚀 신규 예약 등록 모달창 (Google Sheets Insert) ---
+# --- 🚀 신규 예약 등록 모달창 ---
 @st.dialog("➕ 신규 예약 등록")
 def create_reservation_modal(selected_date, start_time):
     st.info(f"선택 시간: **{selected_date} / {start_time}**")
@@ -46,26 +45,23 @@ def create_reservation_modal(selected_date, start_time):
         elif task_type == "정비점검" and not details.strip():
             st.warning("점검사항을 기입해주세요.")
         else:
-            # 1) 전체 데이터 읽어오기
             df = conn.read(worksheet="Sheet1", ttl=0)
-            
-            # 2) 새로운 ID 부여 (가장 큰 ID + 1)
             new_id = int(df['id'].max() + 1) if not df.empty and pd.notna(df['id'].max()) else 1
             
-            # 3) 새 데이터행 생성
             new_row = pd.DataFrame([{
                 "id": new_id, "date": str(selected_date), "start_time": start_time, 
                 "end_time": e_time, "vehicle_no": v_no, "manager": m_name, 
                 "task_type": task_type, "details": details
             }])
             
-            # 4) 기존 데이터와 합친 후 구글 시트에 덮어쓰기
             updated_df = pd.concat([df, new_row], ignore_index=True)
             conn.update(worksheet="Sheet1", data=updated_df)
             
+            # 💡 핵심 픽스: 구글 시트 업데이트 직후 강력한 캐시 소각
+            st.cache_data.clear() 
             st.rerun()
 
-# --- 🚀 예약 조회 / 수정 / 삭제 통합 모달창 (Google Sheets Update/Delete) ---
+# --- 🚀 예약 조회 / 수정 / 삭제 통합 모달창 ---
 @st.dialog("📋 예약 상세 및 관리")
 def reservation_modal(res_id, v_no, manager, t_type, s_time, details, selected_date):
     new_v_no = st.text_input("차량 번호", value=v_no)
@@ -93,8 +89,6 @@ def reservation_modal(res_id, v_no, manager, t_type, s_time, details, selected_d
                 st.error("차량 번호와 운전자를 입력해주세요.")
             else:
                 df = conn.read(worksheet="Sheet1", ttl=0)
-                
-                # 💡 해당 ID를 찾아 데이터 수정
                 idx = df.index[df['id'] == res_id].tolist()
                 if idx:
                     df.at[idx[0], 'start_time'] = new_s_time
@@ -105,19 +99,21 @@ def reservation_modal(res_id, v_no, manager, t_type, s_time, details, selected_d
                     df.at[idx[0], 'details'] = new_details
                     conn.update(worksheet="Sheet1", data=df)
                 
+                # 💡 핵심 픽스: 저장 후 캐시 소각
+                st.cache_data.clear()
                 st.rerun()
                 
     with col_delete:
         if st.button("🗑️ 삭제", type="secondary", use_container_width=True):
             df = conn.read(worksheet="Sheet1", ttl=0)
-            
-            # 💡 해당 ID를 제외한 나머지 데이터만 추출하여 덮어쓰기 (삭제 효과)
             updated_df = df[df['id'] != res_id]
             conn.update(worksheet="Sheet1", data=updated_df)
             
+            # 💡 핵심 픽스: 삭제 후 캐시 소각
+            st.cache_data.clear()
             st.rerun()
 
-# --- 📱 CSS 디자인부 (기존 완벽 방어 코드와 100% 동일, 생략 없이 유지) ---
+# --- 📱 CSS 디자인부 ---
 st.markdown("""
 <style>
     .stApp { background-color: #f7f9fc; }
@@ -150,16 +146,14 @@ target_date = st.date_input("조회 날짜", datetime.today(), label_visibility=
 legend_html = "".join([f"<span style='white-space:nowrap;'>{v['icon']} {k}</span>" for k, v in TASK_CONFIG.items()])
 st.markdown(f'<div class="legend-box">{legend_html}</div>', unsafe_allow_html=True)
 
-# 💡 구글 시트에서 전체 데이터를 불러온 뒤, 해당 날짜만 필터링 (Pandas 로직)
 try:
     df_all = conn.read(worksheet="Sheet1", ttl=0)
-    # 데이터가 비어있지 않으면 날짜 문자열로 변환하여 필터링
     if not df_all.empty and 'date' in df_all.columns:
         df_res = df_all[df_all['date'].astype(str) == str(target_date)]
     else:
         df_res = pd.DataFrame()
 except Exception as e:
-    st.error("구글 스프레드시트 연결 오류: 시크릿 설정이나 공유 권한을 확인해주세요.")
+    st.error(f"구글 스프레드시트 연결 오류의 진짜 원인: {e}") 
     df_res = pd.DataFrame()
 
 # --- 타임라인 렌더링 ---
