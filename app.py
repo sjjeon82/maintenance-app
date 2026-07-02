@@ -1,8 +1,12 @@
 import streamlit as st
 import pandas as pd
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import time
 from streamlit_gsheets import GSheetsConnection
+
+# 💡 시간대: 한국 표준시(KST, UTC+9) 고정 오프셋. (한국은 서머타임 없음 → 항상 +9)
+#    서버가 UTC여도 등록 시각/조회 날짜가 한국 시간 기준이 되도록 강제.
+KST = timezone(timedelta(hours=9))
 
 st.set_page_config(page_title="모바일 정비예약", layout="wide")
 
@@ -149,8 +153,8 @@ def create_reservation_modal(selected_date, start_time, df_res):
 
             new_id = int(df['id'].max() + 1) if not df.empty and pd.notna(df['id'].max()) else 1
 
-            # 💡 사전/당일 구분용: 등록 시각 기록
-            created_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            # 💡 사전/당일 구분용: 등록 시각 기록 (KST 기준)
+            created_at = datetime.now(KST).strftime("%Y-%m-%d %H:%M:%S")
 
             # 💡 핵심 픽스: 구글 시트의 숫자 강제 변환을 막기 위해 앞에 싱글 쿼테이션(') 주입
             new_row = pd.DataFrame([{
@@ -267,7 +271,7 @@ st.markdown("""
 
 st.markdown('<div class="main-title">🚜 정비고 입출고 관리</div>', unsafe_allow_html=True)
 
-target_date = st.date_input("조회 날짜", datetime.today(), label_visibility="collapsed")
+target_date = st.date_input("조회 날짜", datetime.now(KST).date(), label_visibility="collapsed")
 
 legend_html = "".join([f"<span style='white-space:nowrap;'>{v['icon']} {k}({v['limit']})</span>" for k, v in TASK_CONFIG.items()])
 legend_html += f"<span style='white-space:nowrap;'>｜ 📅사전 ⚡당일 ｜ 슬롯총량 {SLOT_TOTAL_LIMIT}대</span>"
