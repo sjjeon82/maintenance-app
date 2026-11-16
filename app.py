@@ -18,25 +18,25 @@ def get_display_slots():
     afternoon = [f"{h:02d}:{m:02d}" for h in range(13, 17) for m in (0, 30)]
     return morning + afternoon
 
-TASK_CATEGORIES = ["정비점검", "오일교환", "요소수보충", "경정비", "차량정비", "마이카", "타이어점검", "기타"]
+TASK_CATEGORIES = ["차량정비", "마이카", "오일교환", "요소수보충", "정비점검", "타이어점검", "경정비", "기타"]
 
 # 💡 정원제: 유형별 30분당 최대 대수(limit) / 선택 가능한 소요시간(분) / 정원 풀(pool)
 #   pool "general": 잠깐 들르는 차량 → SLOT_TOTAL_LIMIT(총 정원)에 포함
 #   pool "dock"   : 차량정비(장시간) → 정비도크 수(limit)로만 별도 관리
 TASK_CONFIG = {
-    "정비점검": {"color": "#FF4B4B", "icon": "🔧", "limit": 1, "durations": [30], "pool": "general"},
-    "오일교환": {"color": "#FFA500", "icon": "🛢️", "limit": 2, "durations": [30], "pool": "general"},
-    "요소수보충": {"color": "#1E90FF", "icon": "💦", "limit": 2, "durations": [30], "pool": "general"},
-    "경정비": {"color": "#28A745", "icon": "📦", "limit": 2, "durations": [30], "pool": "general"},
     "차량정비": {"color": "#6B46C1", "icon": "🛠️", "limit": 4, "durations": list(range(60, 421, 30)), "pool": "dock"},
     "마이카": {"color": "#D53F8C", "icon": "🚗", "limit": 2, "durations": [30, 60], "pool": "general"},
+    "오일교환": {"color": "#FFA500", "icon": "🛢️", "limit": 2, "durations": [30], "pool": "general"},
+    "요소수보충": {"color": "#1E90FF", "icon": "💦", "limit": 2, "durations": [30], "pool": "general"},
+    "정비점검": {"color": "#FF4B4B", "icon": "🔧", "limit": 1, "durations": [30], "pool": "general"},
     "타이어점검": {"color": "#4A5568", "icon": "🛞", "limit": 1, "durations": [30], "pool": "general"},
+    "경정비": {"color": "#28A745", "icon": "📦", "limit": 2, "durations": [30], "pool": "general"},
     "기타": {"color": "#718096", "icon": "📌", "limit": 1, "durations": [30, 60], "pool": "general"},
 }
 
 # 상세내용 입력란을 보여줄 유형 / 그중 필수 입력 유형
-DETAIL_TYPES = ["정비점검", "차량정비", "기타"]
-DETAIL_REQUIRED = ["정비점검", "기타"]
+DETAIL_TYPES = ["정비점검", "차량정비", "경정비", "기타"]
+DETAIL_REQUIRED = ["정비점검", "차량정비", "경정비", "기타"]
 
 # 💡 정원제: 한 슬롯(30분)에 동시 입고 가능한 총 최대 대수 (general 풀에만 적용)
 SLOT_TOTAL_LIMIT = 4
@@ -68,6 +68,11 @@ def slot_range(start_time, minutes):
 def end_time_of(occupied):
     """점유 슬롯 목록의 마지막 슬롯 + 30분 = 출고 시간."""
     return (datetime.strptime(occupied[-1], "%H:%M") + timedelta(minutes=30)).strftime("%H:%M")
+
+
+def first_slot_of(start_time, end_time):
+    """예약이 점유하는 첫 슬롯 (목록에서 이 슬롯에만 표시). 없으면 None."""
+    return next((s for s in slots if start_time <= s < end_time), None)
 
 
 def booking_minutes(start_time, end_time):
@@ -420,6 +425,11 @@ for slot in slots:
         slot_total = 0
     else:
         current_tasks = df_res[(df_res['start_time'] <= slot) & (df_res['end_time'] > slot)]
+        # 💡 여러 슬롯에 걸친 예약은 첫 점유 슬롯(입고 시간)에만 표시 → 목록 간소화
+        #    (정원 계산은 아래 count_slot에서 걸치는 모든 슬롯에 그대로 반영됨)
+        current_tasks = current_tasks[
+            current_tasks.apply(lambda r: first_slot_of(r['start_time'], r['end_time']) == slot, axis=1)
+        ] if not current_tasks.empty else current_tasks
 
     # 💡 정원제: 어떤 유형도 더 받을 수 없을 때만 마감 처리
     slot_counts, slot_general = count_slot(df_res, slot)
@@ -432,7 +442,10 @@ for slot in slots:
 
     with col_tasks:
         if current_tasks.empty:
-            st.markdown("<div class='empty-slot'>예약 가능</div>", unsafe_allow_html=True)
+            if is_full:
+                st.markdown("<div class='full-slot'>마감</div>", unsafe_allow_html=True)
+            else:
+                st.markdown("<div class='empty-slot'>예약 가능</div>", unsafe_allow_html=True)
         else:
             for _, row in current_tasks.iterrows():
                 config = TASK_CONFIG.get(row['task_type'], {"icon": "📌"})
