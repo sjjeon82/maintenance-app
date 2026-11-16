@@ -378,19 +378,41 @@ st.markdown("""
     button[kind="primary"] p { color: white !important; }
     .time-text { font-size: 14px; font-weight: 800; color: #4a5568; text-align: center; line-height: 40px; white-space: nowrap !important; margin: 0; padding: 0;}
     .empty-slot { background-color: #f8fafc; border-radius: 6px; text-align: center; color: #a0aec0; font-size: 13px; font-weight: 600; line-height: 38px; border: 1px dashed #cbd5e0; margin: 0; height: 40px; }
+    /* 📌 상단 고정 영역: 시계 + 날짜선택 + 범례 (Streamlit 메뉴바 3.75rem 바로 아래에 붙음) */
+    /*    Streamlit이 컨테이너를 같은 높이의 stLayoutWrapper로 감싸므로 sticky는 그 래퍼에 적용해야 동작함 */
+    div[data-testid="stLayoutWrapper"]:has(> .st-key-sticky_top) { position: sticky; top: 3.75rem; z-index: 990; }
+    .st-key-sticky_top { background-color: #f7f9fc; padding: 4px 0 2px 0; gap: 6px !important; }
+    .st-key-sticky_top .legend-box { margin-bottom: 4px; }
+    /* 모바일 타임라인용 3열 그리드(50px/1fr/45px)가 이 줄에 적용되지 않도록 덮어씀 */
+    .st-key-sticky_top div[data-testid="stHorizontalBlock"] { display: grid !important; grid-template-columns: 1fr 64px !important; gap: 6px !important; margin-bottom: 0 !important; }
+    .st-key-sticky_top div[data-testid="stColumn"] { width: 100% !important; min-width: 0 !important; }
+    .st-key-sticky_top iframe { display: block; width: 100% !important; }
+    .st-key-sticky_top div[data-testid="stPopover"], .st-key-sticky_top div[data-testid="stPopover"] > div { width: 100% !important; }
+    div[data-testid="stPopover"] button { width: 100% !important; min-height: 40px !important; height: 40px; padding: 0 4px !important; border-radius: 8px !important; }
+    div[data-testid="stPopover"] button p { font-size: 15px !important; font-weight: 700 !important; white-space: nowrap !important; }
+    .viewing-date { background: #fffbea; border: 1px solid #f6e05e; color: #744210; border-radius: 6px; font-size: 12px; font-weight: 700; text-align: center; padding: 4px; }
     .full-slot { background-color: #fff5f5; border-radius: 6px; text-align: center; color: #c53030; font-size: 12px; font-weight: 700; line-height: 38px; border: 1px solid #feb2b2; margin: 0; height: 40px; }
 </style>
 """, unsafe_allow_html=True)
 
 st.markdown('<div class="main-title">🚜 정비고 입출고 관리</div>', unsafe_allow_html=True)
 
-# 💡 현재시간 시계: 브라우저에서 1초마다 갱신 (앱 재실행 없이 움직임), 항상 한국시간 기준
-components.html("""
-<div id="clock" style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
-     background:#1a202c;color:#fff;border-radius:8px;padding:6px 10px;text-align:center;
-     display:flex;justify-content:center;align-items:baseline;gap:10px;">
-  <span id="clock-date" style="font-size:13px;color:#cbd5e0;"></span>
-  <span id="clock-time" style="font-size:24px;font-weight:800;letter-spacing:1px;font-variant-numeric:tabular-nums;"></span>
+# 💡 상단 고정 영역 (시계 + 📅 날짜 선택 + 범례) — CSS .st-key-sticky_top 으로 sticky 처리
+today_kst = datetime.now(KST).date()
+WEEKDAYS = "월화수목금토일"
+
+with st.container(key="sticky_top"):
+    col_clock, col_cal = st.columns([6, 1], vertical_alignment="center")
+
+    with col_clock:
+        # 현재시간 시계: 브라우저에서 1초마다 갱신 (앱 재실행 없이 움직임), 항상 한국시간 기준
+        components.html("""
+<style>html, body { margin: 0; padding: 0; overflow: hidden; }</style>
+<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+     background:#1a202c;color:#fff;border-radius:8px;height:40px;box-sizing:border-box;
+     display:flex;justify-content:center;align-items:center;gap:8px;">
+  <span id="clock-date" style="font-size:12px;color:#cbd5e0;"></span>
+  <span id="clock-time" style="font-size:19px;font-weight:800;letter-spacing:1px;font-variant-numeric:tabular-nums;"></span>
 </div>
 <script>
   const dFmt = new Intl.DateTimeFormat('ko-KR', {timeZone:'Asia/Seoul', month:'long', day:'numeric', weekday:'short'});
@@ -402,16 +424,28 @@ components.html("""
   }
   tick(); setInterval(tick, 1000);
 </script>
-""", height=52)
+""", height=40)
 
-target_date = st.date_input("조회 날짜", datetime.now(KST).date(), label_visibility="collapsed")
+    with col_cal:
+        # 📅 아이콘을 누르면 달력이 열림. 오늘이 아닌 날짜를 보고 있으면 아이콘 옆에 그 날짜를 표시
+        sel = st.session_state.get("target_date", today_kst)
+        cal_label = "📅" if sel == today_kst else f"📅{sel.month}/{sel.day}"
+        with st.popover(cal_label, use_container_width=True):
+            target_date = st.date_input("조회 날짜", today_kst, key="target_date")
 
-legend_html = "".join([
-    f"<span style='white-space:nowrap;'>{v['icon']} {k}({'도크' if v['pool'] == 'dock' else ''}{v['limit']})</span>"
-    for k, v in TASK_CONFIG.items()
-])
-legend_html += f"<span style='white-space:nowrap;'>｜ 📅사전 ⚡당일 ⏸️부품대기 ｜ 일반 슬롯총량 {SLOT_TOTAL_LIMIT}대</span>"
-st.markdown(f'<div class="legend-box">{legend_html}</div>', unsafe_allow_html=True)
+    if target_date != today_kst:
+        st.markdown(
+            f"<div class='viewing-date'>📌 {target_date.month}월 {target_date.day}일"
+            f"({WEEKDAYS[target_date.weekday()]}) 예약을 보고 있습니다</div>",
+            unsafe_allow_html=True,
+        )
+
+    legend_html = "".join([
+        f"<span style='white-space:nowrap;'>{v['icon']} {k}({'도크' if v['pool'] == 'dock' else ''}{v['limit']})</span>"
+        for k, v in TASK_CONFIG.items()
+    ])
+    legend_html += f"<span style='white-space:nowrap;'>｜ 📅사전 ⚡당일 ⏸️부품대기 ｜ 일반 슬롯총량 {SLOT_TOTAL_LIMIT}대</span>"
+    st.markdown(f'<div class="legend-box">{legend_html}</div>', unsafe_allow_html=True)
 
 try:
     df_all = conn.read(worksheet="Sheet1", ttl=0)
