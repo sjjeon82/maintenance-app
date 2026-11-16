@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime, timedelta, timezone
 import time
+import streamlit.components.v1 as components
 from streamlit_gsheets import GSheetsConnection
 
 # 💡 시간대: 한국 표준시(KST, UTC+9) 고정 오프셋. (한국은 서머타임 없음 → 항상 +9)
@@ -357,7 +358,8 @@ def reservation_modal(res_id, v_no, manager, t_type, s_time, e_time, details, st
 st.markdown("""
 <style>
     .stApp { background-color: #f7f9fc; }
-    .block-container { padding: 1rem 0.5rem 2rem 0.5rem !important; max-width: 100% !important; }
+    /* 상단 여백 3.75rem = Streamlit 상단 메뉴바 높이 → 모바일에서 제목이 메뉴바에 가려지지 않도록 */
+    .block-container { padding: 3.75rem 0.5rem 2rem 0.5rem !important; max-width: 100% !important; }
     .main-title { font-size: 20px; font-weight: 800; color: #1a202c; text-align: center; margin-bottom: 10px; }
     .legend-box { background: #ffffff; padding: 8px; border-radius: 8px; font-size: 11px; color: #4a5568; display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; box-shadow: 0 1px 2px rgba(0,0,0,0.05); margin-bottom: 15px; border: 1px solid #e2e8f0; }
 
@@ -381,6 +383,26 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.markdown('<div class="main-title">🚜 정비고 입출고 관리</div>', unsafe_allow_html=True)
+
+# 💡 현재시간 시계: 브라우저에서 1초마다 갱신 (앱 재실행 없이 움직임), 항상 한국시간 기준
+components.html("""
+<div id="clock" style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+     background:#1a202c;color:#fff;border-radius:8px;padding:6px 10px;text-align:center;
+     display:flex;justify-content:center;align-items:baseline;gap:10px;">
+  <span id="clock-date" style="font-size:13px;color:#cbd5e0;"></span>
+  <span id="clock-time" style="font-size:24px;font-weight:800;letter-spacing:1px;font-variant-numeric:tabular-nums;"></span>
+</div>
+<script>
+  const dFmt = new Intl.DateTimeFormat('ko-KR', {timeZone:'Asia/Seoul', month:'long', day:'numeric', weekday:'short'});
+  const tFmt = new Intl.DateTimeFormat('ko-KR', {timeZone:'Asia/Seoul', hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:false});
+  function tick() {
+    const now = new Date();
+    document.getElementById('clock-date').textContent = dFmt.format(now);
+    document.getElementById('clock-time').textContent = tFmt.format(now);
+  }
+  tick(); setInterval(tick, 1000);
+</script>
+""", height=52)
 
 target_date = st.date_input("조회 날짜", datetime.now(KST).date(), label_visibility="collapsed")
 
