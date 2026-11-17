@@ -1,0 +1,12 @@
+# 정비고 입출고 관리 테마: 밝은 테마 고정 (다크모드 폰에서도 대화창이 어두워지지 않도록)
+# 초록 = 주요 동작, 빨강 = 마감·삭제 전용
+[theme]
+base = "light"
+primaryColor = "#1F7A4D"
+backgroundColor = "#f7f9fc"
+secondaryBackgroundColor = "#e9eef3"
+textColor = "#1a202c"
+
+[client]
+# 상단 Deploy 버튼·개발자 메뉴 숨김
+toolbarMode = "minimal"
